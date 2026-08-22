@@ -1,0 +1,4 @@
+# This machine checks out CRLF, but the container build is Linux. Pin the files
+# whose line endings matter there so a stray \r cannot break the image.
+Dockerfile  text eol=lf
+*.sh        text eol=lf
