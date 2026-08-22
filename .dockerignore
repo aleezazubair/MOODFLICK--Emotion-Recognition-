@@ -1,0 +1,19 @@
+.git/
+.github/
+.claude/
+.vscode/
+
+# 36k images; the container only ever needs the trained weights.
+dataset/
+training/X_data.npy
+training/y_labels.npy
+
+# Report artefacts, not runtime files.
+*.pptx
+*.docx
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/

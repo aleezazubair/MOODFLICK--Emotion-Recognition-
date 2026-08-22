@@ -1,29 +1,18 @@
-# Deep Learning Framework
-tensorflow>=2.10.0
-keras>=2.10.0
+# Runtime dependencies — only what serving the model needs.
+# For training and evaluation, use requirements-dev.txt instead.
 
-# Computer Vision
-opencv-python>=4.6.0
-opencv-contrib-python>=4.6.0
-
-# Data Processing
-numpy>=1.23.0
-pandas>=1.5.0
-
-# Machine Learning
-scikit-learn>=1.1.0
-
-# Visualization
-matplotlib>=3.6.0
-seaborn>=0.12.0
-
-# Mobile App (if using Kivy or similar)
-# kivy>=2.1.0
-# kivymd>=1.1.0
-
-# Web Framework for API
-flask>=2.3.0
+# Web
+flask>=3.0.0
 flask-cors>=4.0.0
+gunicorn>=21.2.0
 
-# Additional utilities
-Pillow>=9.0.0
+# Inference
+# tensorflow-cpu skips the ~1.5GB of nvidia/CUDA wheels that plain
+# `tensorflow` pulls in on Linux and that no CPU host can use anyway.
+# Pinned to 2.15 (Keras 2.x): emotion_model.h5 was saved with Keras 2.13
+# and TensorFlow >= 2.16 ships Keras 3, which cannot load that legacy .h5.
+tensorflow-cpu==2.15.1
+
+# opencv-python-headless drops the GUI/Qt bindings the server never calls.
+opencv-python-headless>=4.6.0
+numpy>=1.23.0,<2.0.0

@@ -1,3 +1,14 @@
+---
+title: MoodFlick
+emoji: 🎬
+colorFrom: purple
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+license: mit
+---
+
 # Emotion Recognition System Using Deep Learning
 
 An AI-based system that detects emotions from facial expressions using Convolutional Neural Networks (CNN). This project provides real-time emotion detection capabilities using the FER-2013 dataset.
@@ -62,6 +73,13 @@ Emotion_Recognition_Project/
    ```
 
 2. **Install required packages**
+
+   For training and evaluation:
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+
+   To only run the web app, the slimmer runtime set is enough:
    ```bash
    pip install -r requirements.txt
    ```
@@ -169,12 +187,48 @@ python app.py
 Then open **http://localhost:5000** in your browser and press **Start Camera**.
 
 Features:
-- Live MJPEG webcam stream with face boxes and emotion labels drawn server-side
-- Live confidence breakdown across all 7 emotions
+- Live camera preview with a confidence breakdown across all 7 emotions
 - Start/Stop camera controls
+- MoodFlick movie shelves driven by the detected emotion
 
-The model runs every 5th frame (the last result is drawn in between), which keeps
-the stream at roughly 10 fps instead of stalling on every frame.
+The camera is opened by the **browser** (`getUserMedia`), not by the server. The
+page grabs the current video frame onto an offscreen canvas every 400ms and POSTs
+that JPEG to `/predict`, which detects the face and returns the CNN's output. That
+keeps the server stateless, so the same code runs locally and when deployed --
+a server-side `cv2.VideoCapture(0)` would only ever see a camera attached to the
+machine running Flask.
+
+> Browsers only grant camera access on `https://` or on `localhost`. Opening the
+> page over plain `http://` on a LAN IP will silently fail to start the camera.
+
+---
+
+## Deployment (Hugging Face Spaces)
+
+The repo doubles as a Space: the YAML header at the top of this README plus the
+`Dockerfile` are all the configuration a Docker Space needs.
+
+1. Create a Space at <https://huggingface.co/new-space> -- **SDK: Docker**, blank
+   template.
+2. Push this repo to it:
+   ```bash
+   git remote add space https://huggingface.co/spaces/<username>/<space-name>
+   git push space main
+   ```
+3. Watch the build log in the Space's **Logs** tab. The first build takes a few
+   minutes, mostly installing TensorFlow.
+
+Notes:
+- `requirements.txt` installs `tensorflow-cpu`, not `tensorflow`. On Linux the
+  latter pulls ~1.5GB of CUDA wheels that a CPU-only host cannot use, which is
+  enough on its own to blow past most platforms' function size limits.
+- It is pinned to TensorFlow 2.15 because `emotion_model.h5` was saved with Keras
+  2.13. TensorFlow >= 2.16 ships Keras 3, which cannot load that legacy format.
+- Spaces serve over HTTPS, which is what the browser needs before it will hand
+  the page a camera.
+- **GitHub Pages will not work** for this project -- it serves static files only
+  and cannot run `app.py`, so the UI would load but every `/predict` call would
+  404.
 
 ## Model Architecture
 

@@ -70,14 +70,15 @@
     justify-content: center;
   }
 
-  .stage img {
+  .stage video {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: none;
+    transform: scaleX(-1);   /* mirror, so it behaves like a selfie camera */
   }
 
-  .stage.live img { display: block; }
+  .stage.live video { display: block; }
 
   .placeholder {
     text-align: center;
@@ -231,7 +232,7 @@
 
     <div class="card">
       <div class="stage" id="stage">
-        <img id="feed" alt="Live camera feed">
+        <video id="feed" autoplay playsinline muted></video>
         <div class="placeholder">
           <div class="icon">📷</div>
           <div>Camera is off — press Start Camera to begin</div>
@@ -304,6 +305,9 @@
   });
 
   let polling = null;
+  let stream = null;       // MediaStream while the camera is open
+  let scanBusy = false;    // a /predict request is in flight
+  const canvas = document.createElement("canvas");  // offscreen frame grabber
 
   function showError(message) {
     errorBox.textContent = message;
@@ -326,14 +330,6 @@
   }
 
   function render(data) {
-    dot.classList.toggle("on", data.camera_on);
-
-    if (!data.camera_on) {
-      statusText.textContent = "Camera off";
-      resetReadout("Waiting for camera");
-      return;
-    }
-
     statusText.textContent = data.faces
       ? `Live — ${data.faces} face${data.faces > 1 ? "s" : ""} detected`
       : "Live — looking for a face";
@@ -355,12 +351,37 @@
     });
   }
 
-  async function poll() {
+  async function scanTick() {
+    // Skip the tick if the previous frame is still being predicted, otherwise
+    // a slow model builds a backlog of stale frames.
+    if (scanBusy || !feed.videoWidth) return;
+    scanBusy = true;
+
     try {
-      const response = await fetch("/status");
-      render(await response.json());
+      canvas.width = feed.videoWidth;
+      canvas.height = feed.videoHeight;
+      canvas.getContext("2d").drawImage(feed, 0, 0);
+
+      const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.85));
+      if (!blob) return;
+
+      const body = new FormData();
+      body.append("image", blob, "frame.jpg");
+
+      const response = await fetch("/predict", { method: "POST", body });
+      const data = await response.json();
+
+      if (!data.success) {
+        showError(data.error || "Prediction failed.");
+        return;
+      }
+
+      clearError();
+      render(data);
     } catch (err) {
       showError("Lost connection to the server. Is app.py still running?");
+    } finally {
+      scanBusy = false;
     }
   }
 
@@ -368,25 +389,31 @@
     clearError();
     startBtn.disabled = true;
 
-    try {
-      const response = await fetch("/camera/start", { method: "POST" });
-      const data = await response.json();
-
-      if (!data.success) {
-        showError(data.error || "Could not start the camera.");
-        startBtn.disabled = false;
-        return;
-      }
-
-      // Cache-buster so the browser opens a fresh stream on every restart.
-      feed.src = `/video_feed?t=${Date.now()}`;
-      stage.classList.add("live");
-      stopBtn.disabled = false;
-      polling = setInterval(poll, 250);
-    } catch (err) {
-      showError("Could not reach the server.");
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showError("This browser exposes no camera API. Browsers only allow it over https:// or on localhost.");
       startBtn.disabled = false;
+      return;
     }
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+        audio: false,
+      });
+    } catch (err) {
+      showError(err && err.name === "NotAllowedError"
+        ? "Camera permission was denied. Allow it from the address bar, then try again."
+        : "Could not open the camera. Is another app already using it?");
+      startBtn.disabled = false;
+      return;
+    }
+
+    feed.srcObject = stream;
+    await feed.play().catch(() => {});
+    stage.classList.add("live");
+    dot.classList.add("on");
+    stopBtn.disabled = false;
+    polling = setInterval(scanTick, 400);
   });
 
   stopBtn.addEventListener("click", async () => {
@@ -394,25 +421,24 @@
     clearInterval(polling);
     polling = null;
 
-    // Drop the stream connection before the server releases the device.
-    feed.src = "";
-    stage.classList.remove("live");
+    scanBusy = false;
 
-    try {
-      await fetch("/camera/stop", { method: "POST" });
-    } catch (err) {
-      showError("Could not reach the server.");
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());  // turns the camera light off
+      stream = null;
     }
 
+    feed.srcObject = null;
+    stage.classList.remove("live");
     dot.classList.remove("on");
     statusText.textContent = "Camera off";
     resetReadout("Waiting for camera");
     startBtn.disabled = false;
   });
 
-  // Release the webcam if the tab is closed while streaming.
+  // Release the camera if the tab is closed while streaming.
   window.addEventListener("beforeunload", () => {
-    if (polling) navigator.sendBeacon("/camera/stop");
+    if (stream) stream.getTracks().forEach((t) => t.stop());
   });
 </script>
 </body>
