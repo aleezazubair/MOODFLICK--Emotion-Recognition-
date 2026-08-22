@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emotion Recognition System</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0b0c10;
+    --surface: #14161c;
+    --border: #23262f;
+    --text: #e8eaed;
+    --muted: #8b90a0;
+    --accent: #00e676;
+    --danger: #ff5252;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    padding: 32px 24px 48px;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; }
+
+  header { margin-bottom: 28px; }
+
+  h1 {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .sub {
+    color: var(--muted);
+    font-size: 14px;
+    margin-top: 6px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  /* ---- video ---- */
+
+  .stage {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .stage img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+
+  .stage.live img { display: block; }
+
+  .placeholder {
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    padding: 24px;
+  }
+
+  .stage.live .placeholder { display: none; }
+
+  .placeholder .icon { font-size: 34px; margin-bottom: 12px; }
+
+  .controls {
+    display: flex;
+    gap: 10px;
+    padding: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  button {
+    flex: 1;
+    padding: 11px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: #1b1e26;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  button:hover:not(:disabled) { background: #232733; }
+
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #08130c;
+  }
+
+  button.primary:hover:not(:disabled) { background: #1aef8a; }
+
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* ---- readout ---- */
+
+  .panel { padding: 20px; }
+
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+
+  .dot.on { background: var(--accent); }
+
+  .current {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 20px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .emoji { font-size: 42px; line-height: 1; }
+
+  .label {
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .score { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+  .heading {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 62px 1fr 42px;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 9px;
+    font-size: 13px;
+  }
+
+  .row .name { color: var(--muted); }
+  .row.top .name { color: var(--text); }
+
+  .track {
+    height: 5px;
+    background: #22252e;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .fill {
+    height: 100%;
+    width: 0;
+    background: #3a4050;
+    border-radius: 3px;
+    transition: width 0.25s ease;
+  }
+
+  .row.top .fill { background: var(--accent); }
+
+  .row .pct {
+    text-align: right;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+  }
+
+  .error {
+    display: none;
+    margin-top: 16px;
+    padding: 11px 13px;
+    border-radius: 9px;
+    background: rgba(255, 82, 82, 0.1);
+    border: 1px solid rgba(255, 82, 82, 0.3);
+    color: var(--danger);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Emotion Recognition System</h1>
+    <p class="sub">Real-time facial emotion detection using a CNN trained on FER-2013</p>
+  </header>
+
+  <div class="grid">
+
+    <div class="card">
+      <div class="stage" id="stage">
+        <img id="feed" alt="Live camera feed">
+        <div class="placeholder">
+          <div class="icon">📷</div>
+          <div>Camera is off — press Start Camera to begin</div>
+        </div>
+      </div>
+      <div class="controls">
+        <button class="primary" id="startBtn">Start Camera</button>
+        <button id="stopBtn" disabled>Stop Camera</button>
+      </div>
+    </div>
+
+    <div class="card panel">
+      <div class="status">
+        <span class="dot" id="dot"></span>
+        <span id="statusText">Camera off</span>
+      </div>
+
+      <div class="current">
+        <div class="emoji" id="emoji">—</div>
+        <div>
+          <div class="label" id="label">No face detected</div>
+          <div class="score" id="score">Waiting for camera</div>
+        </div>
+      </div>
+
+      <div class="heading">Confidence breakdown</div>
+      <div id="bars"></div>
+
+      <div class="error" id="error"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const EMOTIONS = ["Angry", "Disgust", "Fear", "Happy", "Neutral", "Sad", "Surprise"];
+  const EMOJI = {
+    Angry: "😠", Disgust: "🤢", Fear: "😨", Happy: "😄",
+    Neutral: "😐", Sad: "😢", Surprise: "😲",
+  };
+
+  const stage = document.getElementById("stage");
+  const feed = document.getElementById("feed");
+  const startBtn = document.getElementById("startBtn");
+  const stopBtn = document.getElementById("stopBtn");
+  const dot = document.getElementById("dot");
+  const statusText = document.getElementById("statusText");
+  const emoji = document.getElementById("emoji");
+  const label = document.getElementById("label");
+  const score = document.getElementById("score");
+  const errorBox = document.getElementById("error");
+
+  // Build one row per emotion once, then only update widths as results arrive.
+  const rows = {};
+  const bars = document.getElementById("bars");
+
+  EMOTIONS.forEach((name) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `
+      <span class="name">${name}</span>
+      <span class="track"><span class="fill"></span></span>
+      <span class="pct">0%</span>`;
+    bars.appendChild(row);
+    rows[name] = {
+      row: row,
+      fill: row.querySelector(".fill"),
+      pct: row.querySelector(".pct"),
+    };
+  });
+
+  let polling = null;
+
+  function showError(message) {
+    errorBox.textContent = message;
+    errorBox.style.display = "block";
+  }
+
+  function clearError() {
+    errorBox.style.display = "none";
+  }
+
+  function resetReadout(message) {
+    emoji.textContent = "—";
+    label.textContent = "No face detected";
+    score.textContent = message;
+    EMOTIONS.forEach((name) => {
+      rows[name].fill.style.width = "0";
+      rows[name].pct.textContent = "0%";
+      rows[name].row.classList.remove("top");
+    });
+  }
+
+  function render(data) {
+    dot.classList.toggle("on", data.camera_on);
+
+    if (!data.camera_on) {
+      statusText.textContent = "Camera off";
+      resetReadout("Waiting for camera");
+      return;
+    }
+
+    statusText.textContent = data.faces
+      ? `Live — ${data.faces} face${data.faces > 1 ? "s" : ""} detected`
+      : "Live — looking for a face";
+
+    if (!data.emotion) {
+      resetReadout("Position your face in the frame");
+      return;
+    }
+
+    emoji.textContent = EMOJI[data.emotion] || "—";
+    label.textContent = data.emotion;
+    score.textContent = `${(data.confidence * 100).toFixed(1)}% confidence`;
+
+    EMOTIONS.forEach((name) => {
+      const value = (data.all_predictions[name] || 0) * 100;
+      rows[name].fill.style.width = `${value}%`;
+      rows[name].pct.textContent = `${value.toFixed(0)}%`;
+      rows[name].row.classList.toggle("top", name === data.emotion);
+    });
+  }
+
+  async function poll() {
+    try {
+      const response = await fetch("/status");
+      render(await response.json());
+    } catch (err) {
+      showError("Lost connection to the server. Is app.py still running?");
+    }
+  }
+
+  startBtn.addEventListener("click", async () => {
+    clearError();
+    startBtn.disabled = true;
+
+    try {
+      const response = await fetch("/camera/start", { method: "POST" });
+      const data = await response.json();
+
+      if (!data.success) {
+        showError(data.error || "Could not start the camera.");
+        startBtn.disabled = false;
+        return;
+      }
+
+      // Cache-buster so the browser opens a fresh stream on every restart.
+      feed.src = `/video_feed?t=${Date.now()}`;
+      stage.classList.add("live");
+      stopBtn.disabled = false;
+      polling = setInterval(poll, 250);
+    } catch (err) {
+      showError("Could not reach the server.");
+      startBtn.disabled = false;
+    }
+  });
+
+  stopBtn.addEventListener("click", async () => {
+    stopBtn.disabled = true;
+    clearInterval(polling);
+    polling = null;
+
+    // Drop the stream connection before the server releases the device.
+    feed.src = "";
+    stage.classList.remove("live");
+
+    try {
+      await fetch("/camera/stop", { method: "POST" });
+    } catch (err) {
+      showError("Could not reach the server.");
+    }
+
+    dot.classList.remove("on");
+    statusText.textContent = "Camera off";
+    resetReadout("Waiting for camera");
+    startBtn.disabled = false;
+  });
+
+  // Release the webcam if the tab is closed while streaming.
+  window.addEventListener("beforeunload", () => {
+    if (polling) navigator.sendBeacon("/camera/stop");
+  });
+</script>
+</body>
+</html>
