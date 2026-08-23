@@ -12,6 +12,7 @@ Serves:
 """
 
 import os
+import threading
 
 import cv2
 import numpy as np
@@ -32,15 +33,44 @@ CORS(app)  # Enable CORS for React Native to connect
 # training/convert_to_onnx.py regenerates this file and checks it still matches
 # Keras to within float32 rounding.
 MODEL_PATH = os.path.join(BASE_DIR, "model", "emotion_model.onnx")
-try:
-    session = ort.InferenceSession(MODEL_PATH, providers=["CPUExecutionProvider"])
-    input_name = session.get_inputs()[0].name
-    model = session  # kept under the old name so /api/health reads the same
-    print("Model loaded successfully!")
-except Exception as e:
-    print(f"Error loading model: {e}")
-    session = None
-    model = None
+
+# Loaded on first use, not at import. A small free instance gets a fraction of
+# a CPU, and loading here delays the port binding long enough for a host health
+# check to declare the service dead and restart it -- forever. Binding first and
+# paying the load cost on the first prediction avoids that loop.
+_session = None
+_input_name = None
+_load_error = None
+_load_lock = threading.Lock()
+
+
+def get_session():
+    """Return the inference session, loading it once on first use."""
+    global _session, _input_name, _load_error
+
+    if _session is not None or _load_error is not None:
+        return _session
+
+    with _load_lock:
+        if _session is None and _load_error is None:
+            try:
+                options = ort.SessionOptions()
+                # One thread each: the container has a fraction of a core, and
+                # onnxruntime's default pools only add contention here.
+                options.intra_op_num_threads = 1
+                options.inter_op_num_threads = 1
+
+                _session = ort.InferenceSession(
+                    MODEL_PATH, sess_options=options,
+                    providers=["CPUExecutionProvider"],
+                )
+                _input_name = _session.get_inputs()[0].name
+                print("Model loaded successfully!")
+            except Exception as exc:
+                _load_error = str(exc)
+                print(f"Error loading model: {exc}")
+
+    return _session
 
 # 🔹 Emotion labels (same order as the dataset folders in preprocessing.py)
 emotions = ["Angry", "Disgust", "Fear", "Happy", "Neutral", "Sad", "Surprise"]
@@ -56,7 +86,7 @@ def predict_face(gray_face):
     face = face.reshape(1, 48, 48, 1).astype(np.float32)
 
     # InferenceSession.run is thread-safe, so no lock is needed here.
-    prediction = session.run(None, {input_name: face})[0][0]
+    prediction = get_session().run(None, {_input_name: face})[0][0]
 
     index = int(np.argmax(prediction))
 
@@ -87,10 +117,14 @@ def index():
 @app.route("/api/health", methods=["GET"])
 def health():
     """Health check endpoint"""
+    # Deliberately does not load the model: this is what the host polls to
+    # decide the service is alive, so it has to answer immediately.
     return jsonify({
         "status": "running",
         "message": "Emotion Recognition API is active",
-        "model_loaded": model is not None,
+        "model_file_present": os.path.exists(MODEL_PATH),
+        "model_loaded": _session is not None,
+        "model_error": _load_error,
         "emotions": emotions
     })
 
@@ -100,10 +134,10 @@ def predict():
     """Predict emotion from one uploaded frame (web UI and mobile app)"""
     try:
         # Check if model is loaded
-        if model is None:
+        if get_session() is None:
             return jsonify({
                 "success": False,
-                "error": "Model not loaded. Please check server logs."
+                "error": f"Model not loaded: {_load_error}"
             }), 500
 
         # Check if image file is provided

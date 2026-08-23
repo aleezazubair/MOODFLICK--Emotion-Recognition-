@@ -21,11 +21,18 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY --chown=user . .
 
-ENV PORT=7860
+# One thread per pool: a free instance gets a fraction of a core, so the
+# default thread pools only add contention.
+ENV PORT=7860 \
+    OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    PYTHONUNBUFFERED=1
 EXPOSE 7860
 
 # Shell form so $PORT expands: hosts assign it at runtime.
-# One worker, since each loads its own copy of the runtime; threads absorb the
-# concurrent /predict calls the page makes while scanning.
-CMD gunicorn --bind "0.0.0.0:${PORT}" --workers 1 --threads 4 \
-    --timeout 120 --access-logfile - app:app
+# One worker, since each would load its own copy of the runtime. Two threads
+# absorb the concurrent /predict calls the page makes while scanning; more than
+# that just contends for a fraction of a core.
+CMD gunicorn --bind "0.0.0.0:${PORT}" --workers 1 --threads 2 \
+    --timeout 120 --graceful-timeout 30 \
+    --access-logfile - --error-logfile - --log-level info app:app
