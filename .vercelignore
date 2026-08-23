@@ -1,0 +1,19 @@
+# 36k images; only the converted model ships.
+dataset/
+training/X_data.npy
+training/y_labels.npy
+
+# The original Keras model is superseded by model/emotion_model.onnx.
+training/emotion_model.h5
+
+# Report artefacts, not runtime files.
+*.pptx
+*.docx
+*.png
+
+.git/
+.claude/
+.vscode/
+__pycache__/
+.venv/
+venv/

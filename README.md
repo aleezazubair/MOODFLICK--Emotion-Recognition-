@@ -1,14 +1,3 @@
----
-title: MoodFlick
-emoji: 🎬
-colorFrom: purple
-colorTo: indigo
-sdk: docker
-app_port: 7860
-pinned: false
-license: mit
----
-
 # Emotion Recognition System Using Deep Learning
 
 An AI-based system that detects emotions from facial expressions using Convolutional Neural Networks (CNN). This project provides real-time emotion detection capabilities using the FER-2013 dataset.
@@ -51,7 +40,10 @@ Emotion_Recognition_Project/
 │   ├── run_emotion_detection.py # Real-time webcam detection
 │   └── emotion_model.h5   # Trained model
 │
-├── app.py                 # Flask API server (/predict endpoint)
+├── api/index.py           # Vercel entry point (imports app.py)
+├── app.py                 # Flask server: pages + /predict endpoint
+├── model/                 # emotion_model.onnx, the served model
+├── vercel.json            # serverless routing and bundled files
 ├── mobile-app/            # React Native (Expo) app
 │
 ├── requirements.txt       # Python dependencies
@@ -203,32 +195,50 @@ machine running Flask.
 
 ---
 
-## Deployment (Hugging Face Spaces)
+## Deployment (Vercel)
 
-The repo doubles as a Space: the YAML header at the top of this README plus the
-`Dockerfile` are all the configuration a Docker Space needs.
+The app is deployed as a single Python serverless function. `vercel.json` routes
+every path to `api/index.py`, which imports the same `app` object that
+`python app.py` runs locally, so there is one codebase and no separate build.
 
-1. Create a Space at <https://huggingface.co/new-space> -- **SDK: Docker**, blank
-   template.
-2. Push this repo to it:
-   ```bash
-   git remote add space https://huggingface.co/spaces/<username>/<space-name>
-   git push space main
-   ```
-3. Watch the build log in the Space's **Logs** tab. The first build takes a few
-   minutes, mostly installing TensorFlow.
+```bash
+npm i -g vercel
+vercel            # first run links the project and gives a preview URL
+vercel --prod
+```
 
-Notes:
-- `requirements.txt` installs `tensorflow-cpu`, not `tensorflow`. On Linux the
-  latter pulls ~1.5GB of CUDA wheels that a CPU-only host cannot use, which is
-  enough on its own to blow past most platforms' function size limits.
-- It is pinned to TensorFlow 2.15 because `emotion_model.h5` was saved with Keras
-  2.13. TensorFlow >= 2.16 ships Keras 3, which cannot load that legacy format.
-- Spaces serve over HTTPS, which is what the browser needs before it will hand
-  the page a camera.
-- **GitHub Pages will not work** for this project -- it serves static files only
-  and cannot run `app.py`, so the UI would load but every `/predict` call would
-  404.
+Or import the GitHub repo at <https://vercel.com/new> and let it deploy on push.
+
+### Why the model is ONNX
+
+Serving with TensorFlow is what makes this app undeployable. A serverless
+function is capped at 250MB, and on Linux `pip install tensorflow` pulls the
+`nvidia-*` CUDA wheels -- around 1.1GB of GPU libraries a CPU host cannot use.
+A first attempt at deploying weighed **2527MB**.
+
+`model/emotion_model.onnx` is the same network exported to ONNX, served by
+`onnxruntime` at roughly 40MB instead of TensorFlow's 1.1GB:
+
+| | TensorFlow | ONNX |
+|---|---:|---:|
+| Inference runtime | ~1101 MB | ~41 MB |
+| Model file | 4.2 MB (`.h5`) | 1.4 MB (`.onnx`) |
+| Bundle vs 250MB limit | over | under |
+
+The conversion is lossless up to float32 rounding. Regenerate and re-verify it
+with `python training/convert_to_onnx.py`, which compares both runtimes over 300
+real test images and fails if the predictions diverge -- measured max difference
+is 6.6e-07, with identical argmax on all 300.
+
+Training still uses Keras and `training/emotion_model.h5`; only serving uses ONNX.
+
+### Other hosts
+
+`Dockerfile` builds the same app for any container host (Render, Fly.io, Cloud
+Run). Note that **Hugging Face Spaces now requires a paid plan** for Docker and
+Gradio Spaces -- only Static Spaces are free, and those cannot run Python.
+**GitHub Pages will not work** either: it serves static files only, so the UI
+would load but every `/predict` call would 404.
 
 ## Model Architecture
 

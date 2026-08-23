@@ -1,13 +1,13 @@
-# Container image for Hugging Face Spaces (SDK: docker).
+# Container image for any container host (Render, Fly.io, Cloud Run).
+# Vercel does not use this -- it builds from vercel.json and api/index.py.
 FROM python:3.11-slim
 
-# libglib2 is still needed by opencv-python-headless; libgomp1 by TensorFlow.
+# libglib2 is still needed by opencv-python-headless; libgomp1 by onnxruntime.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libglib2.0-0 \
         libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Spaces run the container as uid 1000.
 RUN useradd -m -u 1000 user
 USER user
 ENV HOME=/home/user \
@@ -21,11 +21,11 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY --chown=user . .
 
-ENV TF_CPP_MIN_LOG_LEVEL=2 \
-    PORT=7860
+ENV PORT=7860
 EXPOSE 7860
 
-# One worker: each would load its own copy of TensorFlow. Threads absorb the
+# Shell form so $PORT expands: hosts assign it at runtime.
+# One worker, since each loads its own copy of the runtime; threads absorb the
 # concurrent /predict calls the page makes while scanning.
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--threads", "4", \
-     "--timeout", "120", "--access-logfile", "-", "app:app"]
+CMD gunicorn --bind "0.0.0.0:${PORT}" --workers 1 --threads 4 \
+    --timeout 120 --access-logfile - app:app

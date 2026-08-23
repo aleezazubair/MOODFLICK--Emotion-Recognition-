@@ -12,30 +12,35 @@ Serves:
 """
 
 import os
-import threading
 
 import cv2
 import numpy as np
-import tensorflow as tf
+import onnxruntime as ort
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-app = Flask(__name__)
+# template_folder is explicit because the serverless bundle does not keep the
+# repo layout the Flask default assumes.
+app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
 CORS(app)  # Enable CORS for React Native to connect
 
 # 🔹 Load trained model
-MODEL_PATH = os.path.join(BASE_DIR, "training", "emotion_model.h5")
+# ONNX rather than the original .h5: onnxruntime is ~20MB against TensorFlow's
+# ~400MB, which is the difference between fitting a serverless bundle and not.
+# training/convert_to_onnx.py regenerates this file and checks it still matches
+# Keras to within float32 rounding.
+MODEL_PATH = os.path.join(BASE_DIR, "model", "emotion_model.onnx")
 try:
-    model = tf.keras.models.load_model(MODEL_PATH)
+    session = ort.InferenceSession(MODEL_PATH, providers=["CPUExecutionProvider"])
+    input_name = session.get_inputs()[0].name
+    model = session  # kept under the old name so /api/health reads the same
     print("Model loaded successfully!")
 except Exception as e:
     print(f"Error loading model: {e}")
+    session = None
     model = None
-
-# Keras predict() is not reentrant, and gunicorn serves requests on threads.
-_model_lock = threading.Lock()
 
 # 🔹 Emotion labels (same order as the dataset folders in preprocessing.py)
 emotions = ["Angry", "Disgust", "Fear", "Happy", "Neutral", "Sad", "Surprise"]
@@ -48,10 +53,10 @@ face_detector = cv2.CascadeClassifier(
 def predict_face(gray_face):
     """Predict emotion from an already-cropped grayscale face."""
     face = cv2.resize(gray_face, (48, 48)) / 255.0
-    face = face.reshape(1, 48, 48, 1)
+    face = face.reshape(1, 48, 48, 1).astype(np.float32)
 
-    with _model_lock:
-        prediction = model.predict(face, verbose=0)[0]
+    # InferenceSession.run is thread-safe, so no lock is needed here.
+    prediction = session.run(None, {input_name: face})[0][0]
 
     index = int(np.argmax(prediction))
 

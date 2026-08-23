@@ -17,3 +17,6 @@ __pycache__/
 .venv/
 venv/
 env/
+
+# Superseded by model/emotion_model.onnx, which is what the server loads.
+training/emotion_model.h5
