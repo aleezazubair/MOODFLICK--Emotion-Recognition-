@@ -1,0 +1,15 @@
+# Render blueprint. The Dockerfile already reads $PORT, which is what Render
+# sets, so no changes are needed to run the same image here.
+services:
+  - type: web
+    name: moodflick
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    # Render pings this; it is cheap and does not touch the camera.
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # Unbuffered so startup and request logs appear live in the dashboard.
+      - key: PYTHONUNBUFFERED
+        value: "1"
