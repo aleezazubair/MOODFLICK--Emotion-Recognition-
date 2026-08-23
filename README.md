@@ -1,5 +1,6 @@
 # Emotion Recognition System Using Deep Learning
 
+https://moodflick-emotion-recognition.onrender.com/
 An AI-based system that detects emotions from facial expressions using Convolutional Neural Networks (CNN). This project provides real-time emotion detection capabilities using the FER-2013 dataset.
 
 ## Project Overview
