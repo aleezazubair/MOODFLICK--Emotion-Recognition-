@@ -20,6 +20,8 @@ import onnxruntime as ort
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 
+import movies
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # template_folder is explicit because the serverless bundle does not keep the
@@ -125,8 +127,44 @@ def health():
         "model_file_present": os.path.exists(MODEL_PATH),
         "model_loaded": _session is not None,
         "model_error": _load_error,
-        "emotions": emotions
+        "emotions": emotions,
+        "movie_api": "tmdb" if movies.is_configured() else "built-in catalogue",
     })
+
+
+@app.route("/api/catalogue", methods=["GET"])
+def catalogue():
+    """The movie shelves, from TMDB when a key is configured.
+
+    The page carries its own catalogue and uses it whenever configured is
+    false, so the app stays usable with no key and no network.
+    """
+    if not movies.is_configured():
+        return jsonify({"configured": False, "movies": []})
+
+    found = movies.catalogue()
+
+    # An empty list with a key set means TMDB itself failed. Say so, rather
+    # than let the page render empty shelves.
+    return jsonify({
+        "configured": True,
+        "region": movies.REGION,
+        "count": len(found),
+        "movies": found,
+    })
+
+
+@app.route("/api/movie/<int:movie_id>", methods=["GET"])
+def movie_detail(movie_id):
+    """Cast, trailer and streaming availability for one title."""
+    if not movies.is_configured():
+        return jsonify({"success": False, "error": "No TMDB key configured."}), 503
+
+    details = movies.movie_details(movie_id)
+    if not details:
+        return jsonify({"success": False, "error": "Title not found."}), 404
+
+    return jsonify({"success": True, "movie": details})
 
 
 @app.route("/predict", methods=["POST"])

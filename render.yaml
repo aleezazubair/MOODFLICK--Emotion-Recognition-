@@ -13,3 +13,11 @@ services:
       # Unbuffered so startup and request logs appear live in the dashboard.
       - key: PYTHONUNBUFFERED
         value: "1"
+      # sync: false means Render prompts for this in the dashboard and it never
+      # enters the repository. Without it the app falls back to its built-in
+      # catalogue, which still works.
+      - key: TMDB_API_KEY
+        sync: false
+      # Country used for streaming availability.
+      - key: TMDB_REGION
+        value: PK

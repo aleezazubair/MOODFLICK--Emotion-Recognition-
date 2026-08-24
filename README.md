@@ -196,6 +196,49 @@ machine running Flask.
 
 ---
 
+## Movie Catalogue (TMDB)
+
+The page ships with a hand-written catalogue, so it works with no key and no
+network. Set a TMDB key and the same shelves are filled from TMDB instead,
+which adds real poster art, official trailers, and per-country streaming
+availability.
+
+To be clear about what this is: TMDB serves **metadata**. No free API streams
+films, and this one does not either. What it can do is say which services carry
+a title in a given country -- through JustWatch -- so the app links straight to
+it rather than guessing with a search URL.
+
+1. Sign up at <https://www.themoviedb.org/signup> and request an API key at
+   Settings -> API. It is free.
+2. Set it in the environment:
+
+   ```bash
+   # Windows PowerShell
+   $env:TMDB_API_KEY = "your-key"
+   # macOS / Linux
+   export TMDB_API_KEY=your-key
+   ```
+
+   On Render, add it under Environment; `render.yaml` already declares it with
+   `sync: false`, so the value stays out of the repository.
+
+3. Optionally set `TMDB_REGION` (default `PK`) to change which country's
+   streaming availability is reported.
+
+`GET /api/health` reports which source is in use: `movie_api` reads either
+`tmdb` or `built-in catalogue`.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/catalogue` | Every shelf, deduplicated. `configured: false` means the page keeps its own list. |
+| `GET /api/movie/<id>` | One title: full cast, official trailer, and where it can be watched. |
+
+Responses are cached in-process for six hours, which keeps the app well inside
+the free rate limit and off a small instance's CPU. Any TMDB failure leaves the
+built-in catalogue in place rather than emptying the shelves.
+
+---
+
 ## Deployment (Vercel)
 
 The app is deployed as a single Python serverless function. `vercel.json` routes
